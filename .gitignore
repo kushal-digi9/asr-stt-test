@@ -1,0 +1,5 @@
+voice-ai-group_key.pem
+venv/
+.env
+
+logs.txt
