@@ -1,28 +1,20 @@
-from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
+from transformers import AutoModel
 import torch
 import torchaudio
 import asyncio
-import os
-from typing import Optional
+from typing import Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ASRModel:
     def __init__(self, 
-                 model_name: str = "ai4bharat/IndicConformer",
+                 model_name: str = "ai4bharat/indic-conformer-600m-multilingual",
                  hf_token: Optional[str] = None,
                  mock_mode: bool = False):
-        """
-        Initialize ASR model with HF authentication and optimization.
-        
-        Args:
-            model_name: HuggingFace model identifier
-            hf_token: HuggingFace access token
-            mock_mode: If True, return mock transcription for testing
-        """
         self.mock_mode = mock_mode
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.target_sample_rate = 16000
         
         if self.mock_mode:
             logger.info("ASR initialized in mock mode")
@@ -31,26 +23,13 @@ class ASRModel:
         try:
             logger.info(f"Loading ASR model {model_name} on {self.device}")
             
-            # Load processor with HF token
-            self.processor = AutoProcessor.from_pretrained(
+            self.model = AutoModel.from_pretrained(
                 model_name,
                 token=hf_token,
                 trust_remote_code=True
-            )
+            ).to(self.device)
             
-            # Load model with optimizations
-            self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                model_name,
-                token=hf_token,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None,
-                trust_remote_code=True
-            )
-            
-            if self.device == "cpu":
-                self.model = self.model.to(self.device)
-                
-            self.model.eval()  # Set to evaluation mode
+            self.model.eval()
             logger.info("ASR model loaded successfully")
             
         except Exception as e:
@@ -58,56 +37,45 @@ class ASRModel:
             logger.info("Falling back to mock mode")
             self.mock_mode = True
 
-    async def transcribe(self, wav_path: str) -> str:
-        """
-        Transcribe audio file to text.
-        
-        Args:
-            wav_path: Path to WAV audio file
-            
-        Returns:
-            Transcribed text
-        """
+    async def transcribe_with_language(self, wav_path: str) -> Tuple[str, str]:
         if self.mock_mode:
-            await asyncio.sleep(0.1)  # Simulate processing time
-            return "Hello, this is a mock transcription for testing."
+            await asyncio.sleep(0.1)
+            return "Hello, this is a mock transcription for testing.", "english"
             
         try:
-            # Load audio in a thread to avoid blocking
             loop = asyncio.get_event_loop()
-            speech_array, sampling_rate = await loop.run_in_executor(
-                None, torchaudio.load, wav_path
-            )
+            wav, sr = await loop.run_in_executor(None, torchaudio.load, wav_path)
             
-            # Preprocess audio
-            speech_array = speech_array.squeeze()
-            if speech_array.dim() > 1:
-                speech_array = speech_array.mean(dim=0)  # Convert to mono
-                
-            # Process inputs
-            inputs = self.processor(
-                speech_array, 
-                sampling_rate=sampling_rate, 
-                return_tensors="pt"
-            ).to(self.device)
+            wav = torch.mean(wav, dim=0, keepdim=True)
             
-            # Generate transcription
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **inputs,
-                    max_length=512,
-                    num_beams=1,  # Faster inference
-                    do_sample=False
+            if sr != self.target_sample_rate:
+                resampler = torchaudio.transforms.Resample(
+                    orig_freq=sr, 
+                    new_freq=self.target_sample_rate
                 )
-                
-            # Decode result
-            text = self.processor.batch_decode(
-                generated_ids, 
-                skip_special_tokens=True
-            )[0]
+                wav = resampler(wav)
             
-            return text.strip()
+            wav = wav.to(self.device)
+            
+            def _transcribe():
+                with torch.no_grad():
+                    result = self.model(wav, "auto", "ctc")
+                    if isinstance(result, tuple) and len(result) >= 2:
+                        transcription, detected_lang = result[0], result[1]
+                    else:
+                        transcription = result
+                        detected_lang = "auto"
+                    return transcription, detected_lang
+            
+            transcription, detected_language = await loop.run_in_executor(None, _transcribe)
+            
+            logger.info(f"Model detected language: {detected_language}")
+            return transcription.strip(), detected_language
             
         except Exception as e:
             logger.error(f"ASR transcription failed: {e}")
-            return f"[ASR Error] Could not transcribe audio: {str(e)}"
+            return f"[ASR Error] Could not transcribe audio: {str(e)}", "unknown"
+    
+    async def transcribe(self, wav_path: str) -> str:
+        text, _ = await self.transcribe_with_language(wav_path)
+        return text

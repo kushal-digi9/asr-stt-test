@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from models.asr_model import ASRModel
 from models.llm_model import LLMModel
 from models.tts_model import TTSModel
-from utils.audio_utils import save_uploaded_wav, load_audio_bytes, get_audio_duration
+from utils.audio_utils import save_uploaded_wav, load_audio_bytes, get_audio_duration, trim_silence
 from utils.logger import log_request, latency_monitor
 import logging
 from typing import Dict, Any
@@ -46,14 +46,18 @@ TTS_MOCK_MODE = os.getenv("TTS_MOCK_MODE", "false").lower() == "true"
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
+# Model names from environment
+ASR_MODEL_NAME = os.getenv("ASR_MODEL_NAME", "ai4bharat/indic-conformer-600m-multilingual")
+TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "parler-tts/parler-tts-mini-v1")
+
 # Create output directory
 os.makedirs("data/outputs", exist_ok=True)
 
 # Initialize models
 logger.info("Initializing models...")
-asr = ASRModel(hf_token=HF_TOKEN, mock_mode=ASR_MOCK_MODE)
+asr = ASRModel(model_name=ASR_MODEL_NAME, hf_token=HF_TOKEN, mock_mode=ASR_MOCK_MODE)
 llm = LLMModel(ollama_url=OLLAMA_URL, model_name=OLLAMA_MODEL, echo_mode=LLM_ECHO_MODE)
-tts = TTSModel(hf_token=HF_TOKEN, mock_mode=TTS_MOCK_MODE)
+tts = TTSModel(model_name=TTS_MODEL_NAME, hf_token=HF_TOKEN, mock_mode=TTS_MOCK_MODE)
 logger.info("Models initialized successfully")
 
 @app.post("/pipeline")
@@ -84,10 +88,10 @@ async def process_speech_pipeline(
         
         # --- ASR Stage ---
         latency_monitor.start_stage(request_id, "asr")
-        transcribed_text = await asr.transcribe(input_path)
+        transcribed_text, detected_language = await asr.transcribe_with_language(input_path)
         asr_time = latency_monitor.end_stage(request_id, "asr")
         
-        logger.info(f"[{request_id}] ASR output: '{transcribed_text[:100]}...'")
+        logger.info(f"[{request_id}] ASR output: '{transcribed_text[:100]}...' (Language: {detected_language})")
         
         # --- LLM Stage ---
         latency_monitor.start_stage(request_id, "llm")
@@ -99,7 +103,15 @@ async def process_speech_pipeline(
         # --- TTS Stage ---
         latency_monitor.start_stage(request_id, "tts")
         output_path = f"data/outputs/{request_id}_response_{file.filename}"
-        await tts.synthesize(response_text, output_path)
+        
+        # Use appropriate voice description based on detected language
+        if detected_language in ["hindi", "bengali", "tamil", "telugu", "kannada", "malayalam", "gujarati", "marathi", "punjabi", "urdu", "odia", "assamese"]:
+            description = f"A clear female voice speaking in {detected_language} with natural tone and moderate speed."
+        else:
+            description = "A female speaker with a British accent delivers a slightly expressive and animated speech with a moderate speed and pitch."
+        
+        await tts.synthesize(response_text, output_path, description=description)
+            
         tts_time = latency_monitor.end_stage(request_id, "tts")
         
         # Get complete latency report
@@ -116,8 +128,9 @@ async def process_speech_pipeline(
             "X-TTS-Latency-Ms": f"{latency_report.get('tts_time_ms', 0):.2f}",
             "X-Total-Latency-Ms": f"{latency_report.get('total_time_ms', 0):.2f}",
             "X-Audio-Duration-S": f"{audio_duration:.2f}",
-            "X-Transcribed-Text": transcribed_text[:200],  # Truncate for header
-            "X-Response-Text": response_text[:200],  # Truncate for header
+            "X-Detected-Language": detected_language,
+            "X-Transcribed-Text": transcribed_text[:200],
+            "X-Response-Text": response_text[:200],
             "Content-Disposition": f"attachment; filename=response_{file.filename}"
         }
         

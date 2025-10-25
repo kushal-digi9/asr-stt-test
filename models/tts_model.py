@@ -1,5 +1,6 @@
-from transformers import AutoTokenizer, AutoModel
 import torch
+from parler_tts import ParlerTTSForConditionalGeneration
+from transformers import AutoTokenizer
 import soundfile as sf
 import asyncio
 import numpy as np
@@ -13,17 +14,9 @@ class TTSModel:
                  model_name: str = "ai4bharat/indic-parler-tts",
                  hf_token: Optional[str] = None,
                  mock_mode: bool = False):
-        """
-        Initialize TTS model with HF authentication and optimization.
-        
-        Args:
-            model_name: HuggingFace model identifier
-            hf_token: HuggingFace access token
-            mock_mode: If True, generate silent audio for testing
-        """
         self.mock_mode = mock_mode
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.sample_rate = 16000
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.model_name = model_name
         
         if self.mock_mode:
             logger.info("TTS initialized in mock mode")
@@ -32,26 +25,21 @@ class TTSModel:
         try:
             logger.info(f"Loading TTS model {model_name} on {self.device}")
             
-            # Load tokenizer with HF token
+            self.model = ParlerTTSForConditionalGeneration.from_pretrained(
+                model_name,
+                token=hf_token
+            ).to(self.device)
+            
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
-                token=hf_token,
-                trust_remote_code=True
+                token=hf_token
             )
             
-            # Load model with optimizations
-            self.model = AutoModel.from_pretrained(
-                model_name,
-                token=hf_token,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None,
-                trust_remote_code=True
+            self.description_tokenizer = AutoTokenizer.from_pretrained(
+                self.model.config.text_encoder._name_or_path
             )
             
-            if self.device == "cpu":
-                self.model = self.model.to(self.device)
-                
-            self.model.eval()  # Set to evaluation mode
+            self.model.eval()
             logger.info("TTS model loaded successfully")
             
         except Exception as e:
@@ -59,73 +47,69 @@ class TTSModel:
             logger.info("Falling back to mock mode")
             self.mock_mode = True
 
-    async def synthesize(self, text: str, output_path: str = "output.wav") -> str:
-        """
-        Synthesize text to speech and save as WAV file.
-        
-        Args:
-            text: Text to synthesize
-            output_path: Path to save the generated audio
-            
-        Returns:
-            Path to the generated audio file
-        """
+    async def synthesize(self, 
+                        text: str, 
+                        output_path: str = "output.wav",
+                        description: Optional[str] = None) -> str:
         if self.mock_mode:
-            await asyncio.sleep(0.1)  # Simulate processing time
-            # Generate 1 second of silence as mock audio
-            silence = np.zeros(self.sample_rate, dtype=np.float32)
-            sf.write(output_path, silence, self.sample_rate)
+            await asyncio.sleep(0.1)
+            silence = np.zeros(24000, dtype=np.float32)
+            sf.write(output_path, silence, 24000)
             return output_path
             
         try:
-            # Tokenize text
-            inputs = self.tokenizer(
-                text, 
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=512
-            ).to(self.device)
+            if description is None:
+                description = "A female speaker with a British accent delivers a slightly expressive and animated speech with a moderate speed and pitch. The recording is of very high quality, with the speaker's voice sounding clear and very close up."
             
-            # Generate speech in a thread to avoid blocking
+            logger.info(f"Synthesizing: '{text[:50]}...'")
+            
             loop = asyncio.get_event_loop()
             
             def _generate_speech():
                 with torch.no_grad():
-                    # Note: Actual API may vary for indic-parler-tts
-                    # This is a generic implementation that may need adjustment
-                    speech_output = self.model.generate(
-                        **inputs,
+                    description_input_ids = self.description_tokenizer(
+                        description, 
+                        return_tensors="pt"
+                    ).to(self.device)
+                    
+                    prompt_input_ids = self.tokenizer(
+                        text, 
+                        return_tensors="pt"
+                    ).to(self.device)
+                    
+                    generation = self.model.generate(
+                        input_ids=description_input_ids.input_ids,
+                        attention_mask=description_input_ids.attention_mask,
+                        prompt_input_ids=prompt_input_ids.input_ids,
+                        prompt_attention_mask=prompt_input_ids.attention_mask,
                         do_sample=True,
-                        temperature=0.7,
-                        max_length=1024
+                        temperature=0.8,
+                        max_length=1000,
+                        pad_token_id=self.tokenizer.eos_token_id
                     )
-                    return speech_output
+                    
+                    return generation
             
-            speech = await loop.run_in_executor(None, _generate_speech)
+            generation = await loop.run_in_executor(None, _generate_speech)
+            audio_arr = generation.cpu().numpy().squeeze()
             
-            # Convert to numpy and save
-            if hasattr(speech, 'audio'):
-                audio_data = speech.audio.cpu().numpy().squeeze()
-            else:
-                # Fallback if the output format is different
-                audio_data = speech.cpu().numpy().squeeze()
+            if audio_arr.ndim > 1:
+                audio_arr = audio_arr.mean(axis=0)
                 
-            # Ensure audio is in the right format
-            if audio_data.ndim > 1:
-                audio_data = audio_data.mean(axis=0)  # Convert to mono
-                
-            # Normalize audio
-            if audio_data.max() > 1.0 or audio_data.min() < -1.0:
-                audio_data = audio_data / np.max(np.abs(audio_data))
+            if audio_arr.max() > 1.0 or audio_arr.min() < -1.0:
+                audio_arr = audio_arr / np.max(np.abs(audio_arr))
             
-            # Save as WAV file
-            sf.write(output_path, audio_data, self.sample_rate)
-            return output_path
+            sf.write(output_path, audio_arr, self.model.config.sampling_rate)
+            
+            # Trim silence from generated audio
+            from utils.audio_utils import trim_silence
+            trimmed_path = trim_silence(output_path, threshold_db=-35.0)
+            
+            logger.info(f"Generated audio: {len(audio_arr)} samples")
+            return trimmed_path
             
         except Exception as e:
             logger.error(f"TTS synthesis failed: {e}")
-            # Generate silence as fallback
-            silence = np.zeros(self.sample_rate, dtype=np.float32)
-            sf.write(output_path, silence, self.sample_rate)
+            silence = np.zeros(24000, dtype=np.float32)
+            sf.write(output_path, silence, 24000)
             return output_path

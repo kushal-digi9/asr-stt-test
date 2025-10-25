@@ -144,6 +144,54 @@ def convert_to_wav_bytes(audio_array: np.ndarray, sample_rate: int = 16000) -> b
         logger.error(f"Failed to convert audio to WAV bytes: {e}")
         raise
 
+def trim_silence(audio_path: str, output_path: str = None, threshold_db: float = -40.0) -> str:
+    """
+    Trim silence from beginning and end of audio file.
+    
+    Args:
+        audio_path: Path to input audio file
+        output_path: Path for trimmed output (if None, overwrites input)
+        threshold_db: Silence threshold in dB
+        
+    Returns:
+        Path to trimmed audio file
+    """
+    try:
+        if output_path is None:
+            output_path = audio_path
+            
+        audio, sr = librosa.load(audio_path, sr=None)
+        
+        # Trim silence from beginning and end
+        trimmed_audio, _ = librosa.effects.trim(
+            audio, 
+            top_db=-threshold_db,
+            frame_length=2048,
+            hop_length=512
+        )
+        
+        # Add small fade in/out to prevent clicks
+        fade_samples = int(0.01 * sr)  # 10ms fade
+        if len(trimmed_audio) > fade_samples * 2:
+            # Fade in
+            trimmed_audio[:fade_samples] *= np.linspace(0, 1, fade_samples)
+            # Fade out
+            trimmed_audio[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+        
+        # Save trimmed audio
+        sf.write(output_path, trimmed_audio, sr)
+        
+        original_duration = len(audio) / sr
+        trimmed_duration = len(trimmed_audio) / sr
+        
+        logger.info(f"Trimmed audio: {original_duration:.2f}s → {trimmed_duration:.2f}s (saved {original_duration - trimmed_duration:.2f}s)")
+        
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"Failed to trim silence from {audio_path}: {e}")
+        return audio_path
+
 def get_audio_duration(wav_path: str) -> float:
     """
     Get duration of audio file in seconds.

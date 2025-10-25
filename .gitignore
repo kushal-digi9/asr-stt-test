@@ -3,3 +3,5 @@ venv/
 .env
 
 logs.txt
+
+__pycache__/
