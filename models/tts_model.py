@@ -6,6 +6,7 @@ import asyncio
 import numpy as np
 from typing import Optional
 import logging
+from utils.audio_utils import trim_silence
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,6 @@ class TTSModel:
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
             # Trim silence from generated audio
-            from utils.audio_utils import trim_silence
             trimmed_path = trim_silence(output_path, threshold_db=-35.0)
             
             logger.info(f"Generated audio: {len(audio_arr)} samples")

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    command: serve
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  fastapi:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - ASR_MOCK_MODE=false
+      - TTS_MOCK_MODE=false
+      - LLM_ECHO_MODE=false
+      - ASR_MODEL_NAME=${ASR_MODEL_NAME:-ai4bharat/indic-conformer-600m-multilingual}
+      - TTS_MODEL_NAME=${TTS_MODEL_NAME:-ai4bharat/indic-parler-tts}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
+      - HF_ACCESS_TOKEN=${HF_ACCESS_TOKEN}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:

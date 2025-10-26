@@ -3,5 +3,19 @@ venv/
 .env
 
 logs.txt
+*.pem
 
 __pycache__/
+.pytest_cache/
+.tox/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
