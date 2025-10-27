@@ -121,6 +121,11 @@ async def process_speech_pipeline(
         audio_bytes = load_audio_bytes(output_path)
         
         # Prepare response headers with detailed metrics
+        # Encode Unicode text safely for HTTP headers
+        import base64
+        transcribed_b64 = base64.b64encode(transcribed_text[:200].encode('utf-8')).decode('ascii')
+        response_b64 = base64.b64encode(response_text[:200].encode('utf-8')).decode('ascii')
+        
         headers = {
             "X-Request-ID": request_id,
             "X-ASR-Latency-Ms": f"{latency_report.get('asr_time_ms', 0):.2f}",
@@ -129,8 +134,8 @@ async def process_speech_pipeline(
             "X-Total-Latency-Ms": f"{latency_report.get('total_time_ms', 0):.2f}",
             "X-Audio-Duration-S": f"{audio_duration:.2f}",
             "X-Detected-Language": detected_language,
-            "X-Transcribed-Text": transcribed_text[:200],
-            "X-Response-Text": response_text[:200],
+            "X-Transcribed-Text-B64": transcribed_b64,
+            "X-Response-Text-B64": response_b64,
             "Content-Disposition": f"attachment; filename=response_{file.filename}"
         }
         
