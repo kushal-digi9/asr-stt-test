@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     libsndfile1 \
     ffmpeg \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
