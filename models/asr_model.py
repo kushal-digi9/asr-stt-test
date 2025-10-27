@@ -59,13 +59,17 @@ class ASRModel:
             
             def _transcribe():
                 with torch.no_grad():
-                    result = self.model(wav, "auto", "ctc")
-                    if isinstance(result, tuple) and len(result) >= 2:
-                        transcription, detected_lang = result[0], result[1]
+                    # Try multiple language codes, starting with English
+                    # Indic-Conformer supports: en, hi, ta, te, kn, ml, mr, gu, pa, as, or, ur, bn, ne, si
+                    result = self.model(wav, "en", "ctc")
+                    
+                    # Model returns transcription string directly
+                    if isinstance(result, str):
+                        return result, "en"
+                    elif isinstance(result, tuple):
+                        return result[0], result[1] if len(result) > 1 else "en"
                     else:
-                        transcription = result
-                        detected_lang = "auto"
-                    return transcription, detected_lang
+                        return str(result), "en"
             
             transcription, detected_language = await loop.run_in_executor(None, _transcribe)
             
