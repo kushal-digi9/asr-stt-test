@@ -27,7 +27,18 @@ class ASRModel:
                 model_name,
                 token=hf_token,
                 trust_remote_code=True
-            ).to(self.device)
+            )
+            # Try GPU first, fall back to CPU if needed
+            try:
+                if torch.cuda.is_available():
+                    self.model = self.model.to(self.device)
+                    logger.info(f"ASR model on GPU: {self.device}")
+                else:
+                    self.device = "cpu"
+                    logger.info("ASR model on CPU")
+            except Exception as e:
+                logger.warning(f"Could not move model to GPU: {e}, using CPU")
+                self.device = "cpu"
             
             self.model.eval()
             logger.info("ASR model loaded successfully")
@@ -55,15 +66,18 @@ class ASRModel:
                 )
                 wav = resampler(wav)
             
-            wav = wav.to(self.device)
+            # Ensure tensor is on the right device
+            wav = wav.to(self.device) if torch.cuda.is_available() and self.device != "cpu" else wav
             
             def _transcribe():
                 with torch.no_grad():
-                    # Try multiple language codes, starting with English
-                    # Indic-Conformer supports: en, hi, ta, te, kn, ml, mr, gu, pa, as, or, ur, bn, ne, si
+                    # Debug logging
+                    logger.info(f"Audio tensor shape: {wav.shape}, dtype: {wav.dtype}, device: {wav.device}")
+                    
                     result = self.model(wav, "en", "ctc")
                     
-                    # Model returns transcription string directly
+                    logger.info(f"Model returned type: {type(result)}, value: {result}")
+                    
                     if isinstance(result, str):
                         return result, "en"
                     elif isinstance(result, tuple):
