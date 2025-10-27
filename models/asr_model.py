@@ -67,31 +67,57 @@ class ASRModel:
                 wav = resampler(wav)
             
             # Ensure tensor is on the right device
-            wav = wav.to(self.device) if torch.cuda.is_available() and self.device != "cpu" else wav
+            wav = wav.to(self.device)
             
             def _transcribe():
                 with torch.no_grad():
                     # Debug logging
                     logger.info(f"Audio tensor shape: {wav.shape}, dtype: {wav.dtype}, device: {wav.device}")
                     
-                    result = self.model(wav, "en", "ctc")
+                    # Try multiple language codes for better detection
+                    language_codes = ["hi", "bn", "te", "ta", "mr", "gu", "kn", "ml", "or", "pa", "en"]
                     
-                    logger.info(f"Model returned type: {type(result)}, value: {result}")
+                    for lang_code in language_codes:
+                        try:
+                            logger.info(f"Attempting transcription with language: {lang_code}")
+                            transcription = self.model(wav, lang_code, "ctc")
+                            
+                            # Model returns string, not tuple - handle accordingly
+                            transcription_text = str(transcription)
+                            
+                            # Basic validation - if we get reasonable output, use this language
+                            if transcription_text and len(transcription_text.strip()) > 0:
+                                logger.info(f"Successful transcription with language: {lang_code}")
+                                return transcription_text, lang_code
+                                
+                        except ValueError as ve:
+                            logger.warning(f"Language validation error for {lang_code}: {ve}")
+                            continue
+                        except RuntimeError as re:
+                            logger.warning(f"Model runtime error for {lang_code}: {re}")
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Unexpected error for {lang_code}: {e}")
+                            continue
                     
-                    if isinstance(result, str):
-                        return result, "en"
-                    elif isinstance(result, tuple):
-                        return result[0], result[1] if len(result) > 1 else "en"
-                    else:
-                        return str(result), "en"
+                    # If all languages failed, try with default "en" one more time
+                    logger.warning("All language attempts failed, trying default 'en'")
+                    transcription = self.model(wav, "en", "ctc")
+                    return str(transcription), "en"
             
             transcription, detected_language = await loop.run_in_executor(None, _transcribe)
             
             logger.info(f"Model detected language: {detected_language}")
             return transcription.strip(), detected_language
             
+        except ValueError as ve:
+            logger.error(f"Language validation error: {ve}")
+            return f"[ASR Error] Language validation failed: {str(ve)}", "unknown"
+        except RuntimeError as re:
+            logger.error(f"Model runtime error: {re}")
+            return f"[ASR Error] Model runtime failed: {str(re)}", "unknown"
         except Exception as e:
-            logger.error(f"ASR transcription failed: {e}")
+            logger.error(f"Unexpected ASR error: {e}")
             return f"[ASR Error] Could not transcribe audio: {str(e)}", "unknown"
     
     async def transcribe(self, wav_path: str) -> str:
