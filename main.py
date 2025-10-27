@@ -48,7 +48,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 # Model names from environment
 ASR_MODEL_NAME = os.getenv("ASR_MODEL_NAME", "ai4bharat/indic-conformer-600m-multilingual")
-TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "parler-tts/parler-tts-mini-v1")
+TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "ai4bharat/indic-parler-tts")
 
 # Create output directory
 os.makedirs("data/outputs", exist_ok=True)
