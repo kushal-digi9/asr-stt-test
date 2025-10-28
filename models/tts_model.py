@@ -114,11 +114,8 @@ class TTSModel:
             
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
-            # Trim silence from generated audio with a slightly stricter threshold
-            trimmed_path = trim_silence(output_path, threshold_db=-40.0)
-            
-            logger.info(f"Generated audio: {len(audio_arr)} samples")
-            return trimmed_path
+            logger.info(f"Generated audio: {len(audio_arr)} samples, range: [{audio_arr.min():.6f}, {audio_arr.max():.6f}]")
+            return output_path
             
         except Exception as e:
             logger.error(f"TTS synthesis failed: {e}")
