@@ -32,7 +32,7 @@ class LLMModel:
             logger.info(f"LLM initialized with Ollama at {ollama_url}, model: {model_name}")
         
     async def generate_response(self, prompt: str, max_tokens: int = 150) -> str:
-        # Echo mode: just return the input (for testing)
+        
         if self.echo_mode:
             return prompt
         
@@ -44,7 +44,6 @@ class LLMModel:
                 f"\n\nUser: {prompt}\nAssistant:"
             )
 
-            # Call Ollama API
             response = await self.client.post(
                 f"{self.ollama_url}/api/generate",
                 json={

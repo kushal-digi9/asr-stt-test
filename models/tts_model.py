@@ -83,8 +83,8 @@ class TTSModel:
                         attention_mask=description_input_ids.attention_mask,
                         prompt_input_ids=prompt_input_ids.input_ids,
                         prompt_attention_mask=prompt_input_ids.attention_mask,
-                        do_sample=True,
-                        temperature=0.8,
+                        do_sample=False,
+                        temperature=1.0,
                         max_length=1000,
                         pad_token_id=self.tokenizer.eos_token_id
                     )
@@ -100,10 +100,16 @@ class TTSModel:
             if audio_arr.max() > 1.0 or audio_arr.min() < -1.0:
                 audio_arr = audio_arr / np.max(np.abs(audio_arr))
             
+            # Apply gentle fade-out to suppress tail noise
+            fade_samples = int(0.05 * self.model.config.sampling_rate)
+            if fade_samples > 0 and audio_arr.size > fade_samples:
+                fade_curve = np.linspace(1.0, 0.0, fade_samples, dtype=audio_arr.dtype)
+                audio_arr[-fade_samples:] *= fade_curve
+            
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
-            # Trim silence from generated audio
-            trimmed_path = trim_silence(output_path, threshold_db=-35.0)
+            # Trim silence from generated audio with a slightly stricter threshold
+            trimmed_path = trim_silence(output_path, threshold_db=-40.0)
             
             logger.info(f"Generated audio: {len(audio_arr)} samples")
             return trimmed_path

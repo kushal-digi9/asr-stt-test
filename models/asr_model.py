@@ -71,70 +71,12 @@ class ASRModel:
             
             def _transcribe():
                 with torch.no_grad():
-                    # Debug logging
                     logger.info(f"Audio tensor shape: {wav.shape}, dtype: {wav.dtype}, device: {wav.device}")
-                    
-                    # Try multiple language codes with better validation
-                    # Start with English first as it's more common
-                    language_codes = ["en", "hi", "bn", "te", "ta", "mr", "gu", "kn", "ml", "or", "pa"]
-                    
-                    transcription_results = []
-                    
-                    for lang_code in language_codes:
-                        try:
-                            logger.info(f"Attempting transcription with language: {lang_code}")
-                            transcription = self.model(wav, lang_code, "ctc")
-                            
-                            # Model returns string, not tuple - handle accordingly
-                            transcription_text = str(transcription).strip()
-                            
-                            # Basic validation - check if we get reasonable output
-                            if transcription_text and len(transcription_text) > 0:
-                                # Store result for comparison
-                                transcription_results.append((transcription_text, lang_code))
-                                logger.info(f"Got transcription with {lang_code}: '{transcription_text[:50]}...'")
-                                
-                                # For English, check if output contains mostly Latin characters
-                                if lang_code == "en":
-                                    latin_chars = sum(1 for c in transcription_text if c.isascii() and c.isalpha())
-                                    total_chars = sum(1 for c in transcription_text if c.isalpha())
-                                    if total_chars > 0 and (latin_chars / total_chars) > 0.7:
-                                        logger.info(f"English transcription validated (Latin ratio: {latin_chars/total_chars:.2f})")
-                                        return transcription_text, lang_code
-                                
-                                # For Indian languages, check if output contains appropriate script
-                                elif lang_code in ["hi", "mr", "ne"]:  # Devanagari script
-                                    devanagari_chars = sum(1 for c in transcription_text if '\u0900' <= c <= '\u097F')
-                                    total_chars = sum(1 for c in transcription_text if c.isalpha())
-                                    if total_chars > 0 and (devanagari_chars / total_chars) > 0.5:
-                                        logger.info(f"Devanagari script validated for {lang_code}")
-                                        return transcription_text, lang_code
-                                
-                                # For other languages, accept if we get reasonable text
-                                elif len(transcription_text.split()) > 2:  # At least 3 words
-                                    logger.info(f"Reasonable transcription length for {lang_code}")
-                                    return transcription_text, lang_code
-                                
-                        except ValueError as ve:
-                            logger.warning(f"Language validation error for {lang_code}: {ve}")
-                            continue
-                        except RuntimeError as re:
-                            logger.warning(f"Model runtime error for {lang_code}: {re}")
-                            continue
-                        except Exception as e:
-                            logger.warning(f"Unexpected error for {lang_code}: {e}")
-                            continue
-                    
-                    # If no language passed validation, return the first successful result (likely English)
-                    if transcription_results:
-                        best_result = transcription_results[0]  # First result (English)
-                        logger.info(f"Using first successful transcription: {best_result[1]}")
-                        return best_result[0], best_result[1]
-                    
-                    # If all languages failed, try with default "en" one more time
-                    logger.warning("All language attempts failed, trying default 'en'")
-                    transcription = self.model(wav, "en", "ctc")
-                    return str(transcription), "en"
+                    # Hindi-only transcription with CTC decoding
+                    logger.info("Running Hindi (hi) transcription with CTC decoding")
+                    transcription = self.model(wav, "hi", "ctc")
+                    transcription_text = str(transcription).strip()
+                    return transcription_text, "hi"
             
             transcription, detected_language = await loop.run_in_executor(None, _transcribe)
             
