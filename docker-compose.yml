@@ -18,6 +18,12 @@ services:
               capabilities: [gpu]
 
   fastapi:
+    device_requests:
+      - driver: nvidia
+        count: all
+        capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
     build: .
     ports:
       - "8000:8000"
