@@ -18,10 +18,13 @@ services:
               capabilities: [gpu]
 
   fastapi:
-    device_requests:
-      - driver: nvidia
-        count: all
-        capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     build: .
     ports:
       - "8000:8000"
