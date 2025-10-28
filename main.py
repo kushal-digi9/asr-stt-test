@@ -86,12 +86,12 @@ async def process_speech_pipeline(
         audio_duration = get_audio_duration(input_path)
         logger.info(f"[{request_id}] Processing audio: {audio_duration:.2f}s duration")
         
-        # --- ASR Stage ---
+        # --- ASR Stage (Hindi only) ---
         latency_monitor.start_stage(request_id, "asr")
-        transcribed_text, detected_language = await asr.transcribe_with_language(input_path)
+        transcribed_text = await asr.transcribe(input_path)
         asr_time = latency_monitor.end_stage(request_id, "asr")
         
-        logger.info(f"[{request_id}] ASR output: '{transcribed_text[:100]}...' (Language: {detected_language})")
+        logger.info(f"[{request_id}] ASR output: '{transcribed_text[:100]}...'")
         
         # --- LLM Stage ---
         latency_monitor.start_stage(request_id, "llm")
@@ -100,15 +100,12 @@ async def process_speech_pipeline(
         
         logger.info(f"[{request_id}] LLM output: '{response_text[:100]}...'")
         
-        # --- TTS Stage ---
+        # --- TTS Stage (Hindi only) ---
         latency_monitor.start_stage(request_id, "tts")
         output_path = f"data/outputs/{request_id}_response_{file.filename}"
         
-        # Use appropriate voice description based on detected language
-        if detected_language in ["hindi", "bengali", "tamil", "telugu", "kannada", "malayalam", "gujarati", "marathi", "punjabi", "urdu", "odia", "assamese"]:
-            description = f"A clear female voice speaking in {detected_language} with natural tone and moderate speed."
-        else:
-            description = "A female speaker with a British accent delivers a slightly expressive and animated speech with a moderate speed and pitch."
+        # Hindi voice description
+        description = "A clear, warm Indian female voice speaking in hindi with a professional and friendly tone at moderate speed."
         
         await tts.synthesize(response_text, output_path, description=description)
             
@@ -133,7 +130,7 @@ async def process_speech_pipeline(
             "X-TTS-Latency-Ms": f"{latency_report.get('tts_time_ms', 0):.2f}",
             "X-Total-Latency-Ms": f"{latency_report.get('total_time_ms', 0):.2f}",
             "X-Audio-Duration-S": f"{audio_duration:.2f}",
-            "X-Detected-Language": detected_language,
+            "X-Detected-Language": "hindi",
             "X-Transcribed-Text-B64": transcribed_b64,
             "X-Response-Text-B64": response_b64,
             "Content-Disposition": f"attachment; filename=response_{file.filename}"

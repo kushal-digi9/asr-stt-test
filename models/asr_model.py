@@ -48,17 +48,20 @@ class ASRModel:
             logger.info("Falling back to mock mode")
             self.mock_mode = True
 
-    async def transcribe_with_language(self, wav_path: str) -> Tuple[str, str]:
+    async def transcribe(self, wav_path: str) -> str:
+        """Transcribe Hindi audio to text."""
         if self.mock_mode:
             await asyncio.sleep(0.1)
-            return "Hello, this is a mock transcription for testing.", "english"
+            return "नमस्ते, यह एक परीक्षण है।"
             
         try:
             loop = asyncio.get_event_loop()
             wav, sr = await loop.run_in_executor(None, torchaudio.load, wav_path)
             
+            # Convert to mono
             wav = torch.mean(wav, dim=0, keepdim=True)
             
+            # Resample if needed
             if sr != self.target_sample_rate:
                 resampler = torchaudio.transforms.Resample(
                     orig_freq=sr, 
@@ -66,33 +69,20 @@ class ASRModel:
                 )
                 wav = resampler(wav)
             
-            # Ensure tensor is on the right device
+            # Move to device
             wav = wav.to(self.device)
             
             def _transcribe():
                 with torch.no_grad():
                     logger.info(f"Audio tensor shape: {wav.shape}, dtype: {wav.dtype}, device: {wav.device}")
-                    # Hindi-only transcription with CTC decoding
-                    logger.info("Running Hindi (hi) transcription with CTC decoding")
+                    logger.info("Running Hindi transcription with CTC decoding")
+                    # Hindi-only transcription
                     transcription = self.model(wav, "hi", "ctc")
-                    transcription_text = str(transcription).strip()
-                    return transcription_text, "hi"
+                    return str(transcription).strip()
             
-            transcription, detected_language = await loop.run_in_executor(None, _transcribe)
+            transcription = await loop.run_in_executor(None, _transcribe)
+            return transcription
             
-            logger.info(f"Model detected language: {detected_language}")
-            return transcription.strip(), detected_language
-            
-        except ValueError as ve:
-            logger.error(f"Language validation error: {ve}")
-            return f"[ASR Error] Language validation failed: {str(ve)}", "unknown"
-        except RuntimeError as re:
-            logger.error(f"Model runtime error: {re}")
-            return f"[ASR Error] Model runtime failed: {str(re)}", "unknown"
         except Exception as e:
-            logger.error(f"Unexpected ASR error: {e}")
-            return f"[ASR Error] Could not transcribe audio: {str(e)}", "unknown"
-    
-    async def transcribe(self, wav_path: str) -> str:
-        text, _ = await self.transcribe_with_language(wav_path)
-        return text
+            logger.error(f"ASR transcription failed: {e}")
+            return f"[ASR Error] Could not transcribe audio: {str(e)}"
