@@ -97,6 +97,12 @@ class TTSModel:
             if audio_arr.ndim > 1:
                 audio_arr = audio_arr.mean(axis=0)
             
+            # Apply gentle fade-out BEFORE normalization
+            fade_samples = int(0.05 * self.model.config.sampling_rate)
+            if fade_samples > 0 and audio_arr.size > fade_samples:
+                fade_curve = np.linspace(1.0, 0.0, fade_samples, dtype=audio_arr.dtype)
+                audio_arr[-fade_samples:] *= fade_curve
+            
             # Normalize audio to proper volume range
             max_abs = np.max(np.abs(audio_arr))
             if max_abs > 0:
@@ -105,12 +111,6 @@ class TTSModel:
                 logger.info(f"Normalized audio from max {max_abs:.6f} to 0.9")
             else:
                 logger.warning("Generated audio is completely silent!")
-            
-            # Apply gentle fade-out to suppress tail noise
-            fade_samples = int(0.05 * self.model.config.sampling_rate)
-            if fade_samples > 0 and audio_arr.size > fade_samples:
-                fade_curve = np.linspace(1.0, 0.0, fade_samples, dtype=audio_arr.dtype)
-                audio_arr[-fade_samples:] *= fade_curve
             
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
