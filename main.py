@@ -104,8 +104,8 @@ async def process_speech_pipeline(
         latency_monitor.start_stage(request_id, "tts")
         output_path = f"data/outputs/{request_id}_response_{file.filename}"
         
-        # Hindi voice description
-        description = "A clear, warm Indian female voice speaking in hindi with a professional and friendly tone at moderate speed."
+        # Simple voice description for Indic Parler-TTS
+        description = "A female speaker with a clear voice delivers speech at a moderate pace."
         
         await tts.synthesize(response_text, output_path, description=description)
             
