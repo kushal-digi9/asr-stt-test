@@ -25,9 +25,9 @@ services:
       - ollama
     environment:
       - OLLAMA_URL=http://ollama:11434
-      - ASR_MOCK_MODE=true
-      - TTS_MOCK_MODE=true 
-      - LLM_ECHO_MODE=true
+      - ASR_MOCK_MODE=false
+      - TTS_MOCK_MODE=false 
+      - LLM_ECHO_MODE=false
       - REDIS_URL=redis://redis:6379/0
       - ASR_MODEL_NAME=${ASR_MODEL_NAME:-ai4bharat/indic-conformer-600m-multilingual}
       - TTS_MODEL_NAME=${TTS_MODEL_NAME:-ai4bharat/indic-parler-tts}

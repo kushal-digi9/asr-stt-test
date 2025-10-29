@@ -10,7 +10,7 @@ class LLMModel:
     def __init__(self, 
                  ollama_url: str = "http://localhost:11434",
                  model_name: str = "qwen2.5:0.5b-instruct",
-                 echo_mode: bool = True,
+                 echo_mode: bool = False,
                  timeout: float = 30.0):
         """
         Initialize LLM model using Ollama API or echo mode.
