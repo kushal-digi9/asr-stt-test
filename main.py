@@ -11,6 +11,11 @@ from utils.audio_utils import save_uploaded_wav, load_audio_bytes, get_audio_dur
 from utils.logger import log_request, latency_monitor
 import logging
 from typing import Dict, Any
+import uuid
+from celery.result import AsyncResult
+from celery_app import celery_app
+from tasks import process_pipeline_task
+from utils.redis_client import get_json
 
 # Load environment variables
 load_dotenv()
@@ -214,6 +219,39 @@ async def get_metrics(request_id: str) -> Dict[str, Any]:
         "latency_report": report,
         "timestamp": latency_monitor.timings.get(request_id, {})
     }
+
+
+@app.post("/pipeline_async")
+async def pipeline_async() -> Dict[str, Any]:
+    """
+    Enqueue the dummy ASR→LLM→TTS Celery task and return a task_id.
+    """
+    session_id = str(uuid.uuid4())
+    task = process_pipeline_task.delay(session_id, {"note": "demo"})
+    return {"task_id": task.id, "session_id": session_id}
+
+
+@app.get("/status/{task_id}")
+async def task_status(task_id: str) -> Dict[str, Any]:
+    """
+    Check Celery task status/result from Redis backend.
+    Also returns any cached session record.
+    """
+    res = AsyncResult(task_id, app=celery_app)
+    payload: Dict[str, Any] = {
+        "task_id": task_id,
+        "state": res.state,
+        "ready": res.ready(),
+    }
+    if res.ready():
+        try:
+            payload["result"] = res.get(timeout=0)
+        except Exception:
+            pass
+    # Attempt to pull any session record by scanning known key
+    # The client should provide session_id ideally; for demo, include when enqueueing
+    payload["cached_session_example"] = get_json(f"session:{payload.get('result', {}).get('session_id', '')}") if isinstance(payload.get("result"), dict) else None
+    return payload
 
 # Cleanup on shutdown
 @app.on_event("shutdown")

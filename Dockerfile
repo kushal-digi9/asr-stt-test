@@ -18,10 +18,16 @@ RUN apt-get update && apt-get install -y \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PyTorch CUDA wheels first (separate layer, avoids resolver backtracking)
-# Adjust versions if you change Python/CUDA. These match CUDA 12.1 wheels.
-RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.3.1+cu121 torchaudio==2.3.1+cu121
+# Optional CUDA support (default CPU). Set at build time: --build-arg USE_CUDA=true
+ARG USE_CUDA=false
+
+# Install PyTorch based on USE_CUDA
+RUN if [ "$USE_CUDA" = "true" ]; then \
+      pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu121 \
+        torch==2.3.1+cu121 torchaudio==2.3.1+cu121 ; \
+    else \
+      pip install --no-cache-dir torch==2.3.1 torchaudio==2.3.1 ; \
+    fi
 
 # Copy requirements and install remaining Python dependencies
 COPY requirements.txt ./

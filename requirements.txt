@@ -11,3 +11,5 @@ librosa==0.10.2.post1
 numpy==1.26.4
 onnxruntime
 onnxruntime-gpu
+celery==5.3.6
+redis==5.0.1

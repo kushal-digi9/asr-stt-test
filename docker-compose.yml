@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:latest
     volumes:
@@ -9,33 +15,20 @@ services:
       - OLLAMA_HOST=0.0.0.0:11434
     command: serve
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   fastapi:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     build: .
     ports:
       - "8000:8000"
     depends_on:
+      - redis
       - ollama
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
       - OLLAMA_URL=http://ollama:11434
-      - ASR_MOCK_MODE=false
-      - TTS_MOCK_MODE=false
-      - LLM_ECHO_MODE=false
+      - ASR_MOCK_MODE=true
+      - TTS_MOCK_MODE=true 
+      - LLM_ECHO_MODE=true
+      - REDIS_URL=redis://redis:6379/0
       - ASR_MODEL_NAME=${ASR_MODEL_NAME:-ai4bharat/indic-conformer-600m-multilingual}
       - TTS_MODEL_NAME=${TTS_MODEL_NAME:-ai4bharat/indic-parler-tts}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
@@ -43,6 +36,15 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    restart: unless-stopped
+
+  worker:
+    build: .
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A celery_app.celery_app worker --loglevel=INFO --concurrency=2
     restart: unless-stopped
 
 volumes:
