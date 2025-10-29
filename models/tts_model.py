@@ -60,7 +60,10 @@ class TTSModel:
             
         try:
             if description is None:
-                description = "A female speaker with a British accent delivers a slightly expressive and animated speech with a moderate speed and pitch. The recording is of very high quality, with the speaker's voice sounding clear and very close up."
+                description = (
+                    "A female Indian Hindi speaker with a neutral tone and medium pace. "
+                    "Close-mic clear studio recording with no background noise or reverb."
+                )
             
             logger.info(f"Synthesizing: '{text[:50]}...'")
             
@@ -83,9 +86,10 @@ class TTSModel:
                         attention_mask=description_input_ids.attention_mask,
                         prompt_input_ids=prompt_input_ids.input_ids,
                         prompt_attention_mask=prompt_input_ids.attention_mask,
-                        do_sample=False,
-                        temperature=1.0,
-                        max_length=1000,
+                        do_sample=True,
+                        temperature=0.7,
+                        top_p=0.9,
+                        max_new_tokens=1200,
                         pad_token_id=self.tokenizer.eos_token_id
                     )
                     
@@ -103,14 +107,20 @@ class TTSModel:
                 fade_curve = np.linspace(1.0, 0.0, fade_samples, dtype=audio_arr.dtype)
                 audio_arr[-fade_samples:] *= fade_curve
             
-            # Normalize audio to proper volume range
+            # Normalize audio to proper volume range (avoid boosting near-silence)
             max_abs = np.max(np.abs(audio_arr))
-            if max_abs > 0:
-                # Normalize to 0.9 to prevent clipping
-                audio_arr = audio_arr / max_abs * 0.9
-                logger.info(f"Normalized audio from max {max_abs:.6f} to 0.9")
-            else:
-                logger.warning("Generated audio is completely silent!")
+            silence_threshold = 1e-4
+            if max_abs < silence_threshold:
+                logger.warning(
+                    f"Generated audio near-silent (max {max_abs:.6f} < {silence_threshold}); returning silence"
+                )
+                silence = np.zeros(self.model.config.sampling_rate, dtype=np.float32)
+                sf.write(output_path, silence, self.model.config.sampling_rate)
+                return output_path
+
+            # Normalize to 0.9 to prevent clipping
+            audio_arr = audio_arr / max_abs * 0.9
+            logger.info(f"Normalized audio from max {max_abs:.6f} to 0.9")
             
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
