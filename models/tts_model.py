@@ -63,8 +63,7 @@ class TTSModel:
         try:
             if description is None:
                 description = (
-                    "A female Indian Hindi speaker with a neutral tone and medium pace. "
-                    "Close-mic clear studio recording with no background noise or reverb."
+                    "Divya's voice is monotone yet slightly fast in delivery, with a very close recording that almost has no background noise."
                 )
             
             logger.info(f"Synthesizing: '{text[:50]}...'")
