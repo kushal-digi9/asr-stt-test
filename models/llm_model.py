@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class LLMModel:
     def __init__(self, 
                  ollama_url: str = "http://localhost:11434",
-                 model_name: str = "llama3.2:1b",
+                 model_name: str = "qwen2.5:0.5b-instruct",
                  echo_mode: bool = True,
                  timeout: float = 30.0):
         """
