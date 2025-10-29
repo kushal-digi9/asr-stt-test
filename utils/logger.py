@@ -5,7 +5,6 @@ from typing import Dict, Optional
 from fastapi import Request
 from datetime import datetime
 
-# Configure structured logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -13,23 +12,12 @@ logging.basicConfig(
 )
 
 class LatencyMonitor:
-    """Centralized latency monitoring for the speech pipeline."""
     
     def __init__(self):
         self.timings: Dict[str, Dict[str, float]] = {}
         self.logger = logging.getLogger(__name__)
     
     def start_stage(self, request_id: str, stage_name: str) -> str:
-        """
-        Start timing a pipeline stage.
-        
-        Args:
-            request_id: Unique request identifier
-            stage_name: Name of the pipeline stage
-            
-        Returns:
-            Timing ID for this stage
-        """
         timing_id = f"{request_id}_{stage_name}"
         
         if request_id not in self.timings:
@@ -39,16 +27,6 @@ class LatencyMonitor:
         return timing_id
     
     def end_stage(self, request_id: str, stage_name: str) -> float:
-        """
-        End timing a pipeline stage and return duration.
-        
-        Args:
-            request_id: Unique request identifier
-            stage_name: Name of the pipeline stage
-            
-        Returns:
-            Duration in milliseconds
-        """
         end_time = time.perf_counter()
         
         if request_id not in self.timings:
@@ -70,15 +48,6 @@ class LatencyMonitor:
         return duration_ms
     
     def get_report(self, request_id: str) -> Dict[str, float]:
-        """
-        Get complete latency report for a request.
-        
-        Args:
-            request_id: Unique request identifier
-            
-        Returns:
-            Dictionary with stage durations in milliseconds
-        """
         if request_id not in self.timings:
             return {}
             
@@ -98,7 +67,6 @@ class LatencyMonitor:
         return report
     
     def cleanup_request(self, request_id: str):
-        """Clean up timing data for a completed request."""
         if request_id in self.timings:
             del self.timings[request_id]
 
@@ -106,19 +74,11 @@ class LatencyMonitor:
 latency_monitor = LatencyMonitor()
 
 def log_latency(stage: str, start_time: float) -> float:
-    """
-    Legacy function for backward compatibility.
-    Log and return stage latency in seconds.
-    """
     duration = time.perf_counter() - start_time
     logging.info(f"{stage} took {duration:.3f} sec")
     return duration
 
 async def log_request(request: Request, call_next):
-    """
-    Middleware to log incoming requests and total response time.
-    Adds request ID for tracking.
-    """
     request_id = str(uuid.uuid4())[:8]
     start_time = time.perf_counter()
     
@@ -150,5 +110,4 @@ async def log_request(request: Request, call_next):
         )
         raise
     finally:
-        # Cleanup timing data
         latency_monitor.cleanup_request(request_id)

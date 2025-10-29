@@ -40,6 +40,8 @@ class TTSModel:
                 self.model.config.text_encoder._name_or_path
             )
             
+            # Using dual tokenizers as in official examples (broadly compatible)
+            
             self.model.eval()
             logger.info("TTS model loaded successfully")
             
@@ -72,27 +74,22 @@ class TTSModel:
             def _generate_speech():
                 with torch.no_grad():
                     description_input_ids = self.description_tokenizer(
-                        description, 
+                        description,
                         return_tensors="pt"
                     ).to(self.device)
-                    
+
                     prompt_input_ids = self.tokenizer(
-                        text, 
+                        text,
                         return_tensors="pt"
                     ).to(self.device)
-                    
+
                     generation = self.model.generate(
                         input_ids=description_input_ids.input_ids,
                         attention_mask=description_input_ids.attention_mask,
                         prompt_input_ids=prompt_input_ids.input_ids,
-                        prompt_attention_mask=prompt_input_ids.attention_mask,
-                        do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
-                        max_new_tokens=1200,
-                        pad_token_id=self.tokenizer.eos_token_id
+                        prompt_attention_mask=prompt_input_ids.attention_mask
                     )
-                    
+
                     return generation
             
             generation = await loop.run_in_executor(None, _generate_speech)
@@ -107,21 +104,7 @@ class TTSModel:
                 fade_curve = np.linspace(1.0, 0.0, fade_samples, dtype=audio_arr.dtype)
                 audio_arr[-fade_samples:] *= fade_curve
             
-            # Normalize audio to proper volume range (avoid boosting near-silence)
-            max_abs = np.max(np.abs(audio_arr))
-            silence_threshold = 1e-4
-            if max_abs < silence_threshold:
-                logger.warning(
-                    f"Generated audio near-silent (max {max_abs:.6f} < {silence_threshold}); returning silence"
-                )
-                silence = np.zeros(self.model.config.sampling_rate, dtype=np.float32)
-                sf.write(output_path, silence, self.model.config.sampling_rate)
-                return output_path
-
-            # Normalize to 0.9 to prevent clipping
-            audio_arr = audio_arr / max_abs * 0.9
-            logger.info(f"Normalized audio from max {max_abs:.6f} to 0.9")
-            
+            # Save audio with model's sampling rate (exact official process)
             sf.write(output_path, audio_arr, self.model.config.sampling_rate)
             
             logger.info(f"Generated audio: {len(audio_arr)} samples, range: [{audio_arr.min():.6f}, {audio_arr.max():.6f}]")
