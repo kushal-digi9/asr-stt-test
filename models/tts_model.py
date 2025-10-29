@@ -30,6 +30,11 @@ class TTSModel:
                 model_name,
                 token=hf_token
             ).to(self.device)
+            # Force FP32 for stability on some GPUs
+            try:
+                self.model = self.model.to(torch.float32)
+            except Exception:
+                pass
             
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
@@ -39,9 +44,7 @@ class TTSModel:
             self.description_tokenizer = AutoTokenizer.from_pretrained(
                 self.model.config.text_encoder._name_or_path
             )
-            
-            # Using dual tokenizers as in official examples (broadly compatible)
-            
+             
             self.model.eval()
             logger.info("TTS model loaded successfully")
             
@@ -71,7 +74,8 @@ class TTSModel:
             loop = asyncio.get_event_loop()
             
             def _generate_speech():
-                with torch.no_grad():
+                # Deterministic, fp32, no autocast
+                with torch.inference_mode():
                     description_input_ids = self.description_tokenizer(
                         description,
                         return_tensors="pt"
@@ -82,15 +86,14 @@ class TTSModel:
                         return_tensors="pt"
                     ).to(self.device)
 
+                    # Greedy decoding for stability; reduce token count for latency
                     generation = self.model.generate(
                         input_ids=description_input_ids.input_ids,
                         attention_mask=description_input_ids.attention_mask,
                         prompt_input_ids=prompt_input_ids.input_ids,
                         prompt_attention_mask=prompt_input_ids.attention_mask,
-                        do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
-                        max_new_tokens=1000
+                        do_sample=False,
+                        max_new_tokens=600
                     )
 
                     return generation
@@ -101,7 +104,8 @@ class TTSModel:
             if audio_arr.ndim > 1:
                 audio_arr = audio_arr.mean(axis=0)
             
-            # Normalize audio to proper volume range
+            # Clamp and normalize audio to proper volume range
+            audio_arr = np.clip(audio_arr, -1.0, 1.0)
             max_abs = np.max(np.abs(audio_arr))
             if max_abs > 0:
                 # Normalize to 0.9 to prevent clipping
