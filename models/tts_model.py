@@ -91,9 +91,7 @@ class TTSModel:
                         input_ids=description_input_ids.input_ids,
                         attention_mask=description_input_ids.attention_mask,
                         prompt_input_ids=prompt_input_ids.input_ids,
-                        prompt_attention_mask=prompt_input_ids.attention_mask,
-                        do_sample=False,
-                        max_new_tokens=600
+                        prompt_attention_mask=prompt_input_ids.attention_mask
                     )
 
                     return generation

@@ -21,3 +21,5 @@ __pycache__/
 Thumbs.db
 
 rediscelery.txt
+
+data/
