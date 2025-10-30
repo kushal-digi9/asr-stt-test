@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import io
+import time
 from dotenv import load_dotenv
 from models.asr_model import ASRModel
 from models.llm_model import LLMModel
@@ -54,7 +55,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 # Model names from environment
 ASR_MODEL_NAME = os.getenv("ASR_MODEL_NAME", "ai4bharat/indic-conformer-600m-multilingual")
-TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "ai4bharat/indic-parler-tts")
+TTS_MODEL_NAME = os.getenv("TTS_MODEL_NAME", "parler-tts/parler-tts-mini-v1.1")
 
 # Create output directory
 os.makedirs("data/outputs", exist_ok=True)
@@ -69,6 +70,8 @@ logger.info(f"CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     logger.info(f"GPU device: {torch.cuda.get_device_name(0)}")
     logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    logger.info(f"GPU memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+    logger.info(f"GPU memory cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
 
 # Startup event to preload LLM model
 @app.on_event("startup")
@@ -80,6 +83,13 @@ async def startup_event():
         logger.info("LLM model preloaded successfully")
     else:
         logger.warning("LLM model preload failed, but service will continue")
+    
+    # Log GPU memory usage after model loading
+    if torch.cuda.is_available():
+        logger.info(f"GPU memory after model loading:")
+        logger.info(f"  Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+        logger.info(f"  Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+        logger.info(f"  Free: {(torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_reserved(0)) / 1024**3:.2f} GB")
 
 @app.post("/pipeline")
 async def process_speech_pipeline(
@@ -93,50 +103,85 @@ async def process_speech_pipeline(
     and returns synthesized audio with latency measurements.
     """
     request_id = getattr(request.state, 'request_id', 'unknown')
+    pipeline_start = time.time()
+    
+    logger.info(f"🚀 Starting pipeline processing for request: {request_id}")
+    logger.info(f"🚀 File: {file.filename}, Content-Type: {file.content_type}")
+    logger.info(f"🚀 File size: {file.size if hasattr(file, 'size') else 'unknown'} bytes")
     
     try:
         # Validate file type
         if not file.filename.lower().endswith('.wav'):
+            logger.error(f"❌ Invalid file type: {file.filename}")
             raise HTTPException(status_code=400, detail="Only WAV files are supported")
+        
+        logger.info(f"✅ File validation passed: {file.filename}")
         
         # Save input audio with validation
         input_path = f"data/outputs/{request_id}_{file.filename}"
+        logger.info(f"💾 Saving uploaded file to: {input_path}")
         save_uploaded_wav(file, input_path)
         
         # Get audio duration for logging
         audio_duration = get_audio_duration(input_path)
-        logger.info(f"[{request_id}] Processing audio: {audio_duration:.2f}s duration")
+        logger.info(f"🎵 Audio file loaded: {audio_duration:.2f}s duration")
+        logger.info(f"🎵 Input file size: {os.path.getsize(input_path) / 1024:.1f} KB")
         
         # --- ASR Stage (Hindi only) ---
+        logger.info(f"🎤 Starting ASR stage for request: {request_id}")
         latency_monitor.start_stage(request_id, "asr")
+        asr_start = time.time()
         transcribed_text = await asr.transcribe(input_path)
         asr_time = latency_monitor.end_stage(request_id, "asr")
+        asr_elapsed = time.time() - asr_start
         
-        logger.info(f"[{request_id}] ASR output: '{transcribed_text[:100]}...'")
+        logger.info(f"✅ ASR completed in {asr_elapsed:.3f}s")
+        logger.info(f"🎤 Transcribed text length: {len(transcribed_text)} characters")
+        logger.info(f"🎤 Transcribed text: '{transcribed_text[:150]}{'...' if len(transcribed_text) > 150 else ''}'")
         
         # --- LLM Stage ---
+        logger.info(f"🧠 Starting LLM stage for request: {request_id}")
         latency_monitor.start_stage(request_id, "llm")
+        llm_start = time.time()
         response_text = await llm.generate_response(transcribed_text)
         llm_time = latency_monitor.end_stage(request_id, "llm")
+        llm_elapsed = time.time() - llm_start
         
-        logger.info(f"[{request_id}] LLM output: '{response_text[:100]}...'")
+        logger.info(f"✅ LLM completed in {llm_elapsed:.3f}s")
+        logger.info(f"🧠 Response text length: {len(response_text)} characters")
+        logger.info(f"🧠 Response text: '{response_text[:150]}{'...' if len(response_text) > 150 else ''}'")
         
         # --- TTS Stage (Hindi only) ---
+        logger.info(f"🔊 Starting TTS stage for request: {request_id}")
         latency_monitor.start_stage(request_id, "tts")
+        tts_start = time.time()
         output_path = f"data/outputs/{request_id}_response_{file.filename}"
         
-        # Simple voice description for Indic Parler-TTS
-        description = "A female speaker with a clear voice delivers speech at a moderate pace."
+        # Enhanced voice description for better quality
+        description = (
+            "A professional Indian female speaker with a warm, clear voice delivers speech at a moderate pace. "
+            "Her voice is clear and reassuring, with excellent recording quality and minimal background noise. "
+            "She speaks Hindi naturally with proper pronunciation and Indian intonation."
+        )
+        
+        logger.info(f"🔊 Output path: {output_path}")
+        logger.info(f"🔊 Voice description: '{description[:100]}{'...' if len(description) > 100 else ''}'")
         
         await tts.synthesize(response_text, output_path, description=description)
-            
         tts_time = latency_monitor.end_stage(request_id, "tts")
+        tts_elapsed = time.time() - tts_start
+        
+        logger.info(f"✅ TTS completed in {tts_elapsed:.3f}s")
+        logger.info(f"🔊 Output file size: {os.path.getsize(output_path) / 1024:.1f} KB")
         
         # Get complete latency report
         latency_report = latency_monitor.get_report(request_id)
+        total_pipeline_time = time.time() - pipeline_start
         
         # Prepare response audio stream
+        logger.info(f"📦 Preparing response audio stream...")
         audio_bytes = load_audio_bytes(output_path)
+        logger.info(f"📦 Audio stream size: {len(audio_bytes) / 1024:.1f} KB")
         
         # Prepare response headers with detailed metrics
         # Encode Unicode text safely for HTTP headers
@@ -157,7 +202,19 @@ async def process_speech_pipeline(
             "Content-Disposition": f"attachment; filename=response_{file.filename}"
         }
         
-        logger.info(f"[{request_id}] Pipeline completed: {latency_report.get('total_time_ms', 0):.2f}ms total")
+        # Final pipeline summary
+        logger.info(f"🎉 Pipeline completed successfully for request: {request_id}")
+        logger.info(f"📊 Performance Summary:")
+        logger.info(f"  🎤 ASR: {asr_elapsed:.3f}s ({latency_report.get('asr_time_ms', 0):.1f}ms)")
+        logger.info(f"  🧠 LLM: {llm_elapsed:.3f}s ({latency_report.get('llm_time_ms', 0):.1f}ms)")
+        logger.info(f"  🔊 TTS: {tts_elapsed:.3f}s ({latency_report.get('tts_time_ms', 0):.1f}ms)")
+        logger.info(f"  ⏱️  Total: {total_pipeline_time:.3f}s ({latency_report.get('total_time_ms', 0):.1f}ms)")
+        logger.info(f"  🎵 Audio: {audio_duration:.2f}s input → {len(audio_bytes) / 1024:.1f} KB output")
+        
+        # Calculate efficiency metrics
+        real_time_factor = total_pipeline_time / audio_duration if audio_duration > 0 else 0
+        logger.info(f"  ⚡ Real-time factor: {real_time_factor:.2f}x")
+        logger.info(f"  🚀 Processing speed: {audio_duration/total_pipeline_time:.2f}x faster than real-time" if real_time_factor < 1 else f"  🐌 Processing speed: {real_time_factor:.2f}x slower than real-time")
         
         return StreamingResponse(
             io.BytesIO(audio_bytes),
