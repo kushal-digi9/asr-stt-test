@@ -1,21 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_HOST=0.0.0.0:11434
-    command: serve
-    restart: unless-stopped
-
   fastapi:
     build: .
     ports:
@@ -36,6 +19,13 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
 
   worker:
@@ -45,7 +35,11 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
     command: celery -A celery_app.celery_app worker --loglevel=INFO --concurrency=2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
-
-volumes:
-  ollama_data:

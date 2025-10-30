@@ -64,6 +64,10 @@ asr = ASRModel(model_name=ASR_MODEL_NAME, hf_token=HF_TOKEN, mock_mode=ASR_MOCK_
 llm = LLMModel(ollama_url=OLLAMA_URL, model_name=OLLAMA_MODEL, echo_mode=LLM_ECHO_MODE)
 tts = TTSModel(model_name=TTS_MODEL_NAME, hf_token=HF_TOKEN, mock_mode=TTS_MOCK_MODE)
 logger.info("Models initialized successfully")
+logger.info(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    logger.info(f"GPU device: {torch.cuda.get_device_name(0)}")
+    logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
 
 @app.post("/pipeline")
 async def process_speech_pipeline(
