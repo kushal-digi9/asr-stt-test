@@ -66,7 +66,7 @@ class TTSModel:
         try:
             if description is None:
                 description = (
-                    "Amrita speaks with a high pitch at a slow pace. Her voice is clear, with excellent recording quality and only moderate background noise."
+                    "A professional Indian female speaker with a warm, reassuring voice delivers medical information in Hindi. She speaks clearly at a moderate pace with proper Indian pronunciation."
                 )
             
             logger.info(f"Synthesizing: '{text[:50]}...'")
