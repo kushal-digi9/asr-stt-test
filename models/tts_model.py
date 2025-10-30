@@ -86,7 +86,6 @@ class TTSModel:
                         return_tensors="pt"
                     ).to(self.device)
 
-                    # Greedy decoding for stability; reduce token count for latency
                     generation = self.model.generate(
                         input_ids=description_input_ids.input_ids,
                         attention_mask=description_input_ids.attention_mask,

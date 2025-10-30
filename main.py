@@ -16,6 +16,7 @@ from celery.result import AsyncResult
 from celery_app import celery_app
 from tasks import process_pipeline_task
 from utils.redis_client import get_json
+import torch
 
 # Load environment variables
 load_dotenv()
@@ -46,7 +47,7 @@ app.middleware("http")(log_request)
 # Configuration from environment
 HF_TOKEN = os.getenv("HF_ACCESS_TOKEN")
 ASR_MOCK_MODE = os.getenv("ASR_MOCK_MODE", "false").lower() == "true"
-LLM_ECHO_MODE = os.getenv("LLM_ECHO_MODE", "true").lower() == "true"
+LLM_ECHO_MODE = os.getenv("LLM_ECHO_MODE", "false").lower() == "true"
 TTS_MOCK_MODE = os.getenv("TTS_MOCK_MODE", "false").lower() == "true"
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
@@ -68,6 +69,17 @@ logger.info(f"CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     logger.info(f"GPU device: {torch.cuda.get_device_name(0)}")
     logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+
+# Startup event to preload LLM model
+@app.on_event("startup")
+async def startup_event():
+    """Preload LLM model on startup."""
+    logger.info("Preloading LLM model...")
+    success = await llm.preload_model()
+    if success:
+        logger.info("LLM model preloaded successfully")
+    else:
+        logger.warning("LLM model preload failed, but service will continue")
 
 @app.post("/pipeline")
 async def process_speech_pipeline(

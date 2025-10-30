@@ -77,6 +77,44 @@ class LLMModel:
 
 
     
+    async def preload_model(self) -> bool:
+        """Preload the model in Ollama to ensure it's ready."""
+        if self.echo_mode:
+            return True
+            
+        try:
+            logger.info(f"Preloading LLM model: {self.model_name}")
+            
+            # First check if model is already available
+            try:
+                response = await self.client.get(f"{self.ollama_url}/api/tags")
+                if response.status_code == 200:
+                    models = response.json().get("models", [])
+                    model_names = [model.get("name", "") for model in models]
+                    if any(self.model_name in name for name in model_names):
+                        logger.info(f"LLM model {self.model_name} already available")
+                        return True
+            except Exception as e:
+                logger.warning(f"Could not check existing models: {e}")
+            
+            # Pull the model if not already available
+            logger.info(f"Pulling LLM model: {self.model_name}")
+            pull_response = await self.client.post(
+                f"{self.ollama_url}/api/pull",
+                json={"name": self.model_name}
+            )
+            
+            if pull_response.status_code == 200:
+                logger.info(f"LLM model {self.model_name} preloaded successfully")
+                return True
+            else:
+                logger.warning(f"Failed to preload model: {pull_response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to preload LLM model: {e}")
+            return False
+
     async def health_check(self) -> bool:
         """Check if Ollama service is available."""
         if self.echo_mode:
