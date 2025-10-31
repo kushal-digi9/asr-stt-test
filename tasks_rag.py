@@ -123,7 +123,7 @@ def batch_ingest_documents_task(file_paths: List[str], batch_id: str) -> Dict[st
     
     set_json(f"batch:{batch_id}", batch_result, ex_seconds=86400)
     
-    logger.info(f"✅ Batch ingestion completed: {batch_id}")
+    logger.info(f"Batch ingestion completed: {batch_id}")
     return batch_result
 
 
@@ -138,7 +138,7 @@ def update_embeddings_task(doc_ids: List[str]) -> Dict[str, Any]:
     Returns:
         Dict with update results
     """
-    logger.info(f"🔄 Updating embeddings for {len(doc_ids)} documents")
+    logger.info(f"Updating embeddings for {len(doc_ids)} documents")
     
     # This is a placeholder - implement based on your needs
     # You would need to retrieve original texts and re-embed them

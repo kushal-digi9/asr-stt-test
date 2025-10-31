@@ -73,10 +73,21 @@ if torch.cuda.is_available():
     logger.info(f"GPU memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
     logger.info(f"GPU memory cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
 
-# Startup event to preload LLM model
+# Startup event to preload LLM model and initialize database
 @app.on_event("startup")
 async def startup_event():
-    """Preload LLM model on startup."""
+    """Preload LLM model on startup and initialize database."""
+    # Initialize database tables
+    try:
+        from utils.database import init_db
+        logger.info("Initializing database...")
+        init_db()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        logger.warning("Service will continue, but database features may not work")
+    
+    # Preload LLM model
     logger.info("Preloading LLM model...")
     success = await llm.preload_model()
     if success:
@@ -139,11 +150,31 @@ async def process_speech_pipeline(
         logger.info(f"🎤 Transcribed text length: {len(transcribed_text)} characters")
         logger.info(f"🎤 Transcribed text: '{transcribed_text[:150]}{'...' if len(transcribed_text) > 150 else ''}'")
         
-        # --- LLM Stage ---
+        # --- LLM Stage with Database Context ---
         logger.info(f"🧠 Starting LLM stage for request: {request_id}")
         latency_monitor.start_stage(request_id, "llm")
         llm_start = time.time()
-        response_text = await llm.generate_response(transcribed_text)
+        
+        # Query PostgreSQL for relevant context
+        db_context_text = ""
+        db_context = {"query_type": "none"}
+        try:
+            from utils.medical_db_query import MedicalDBQuery
+            db_query = MedicalDBQuery() 
+            db_context = db_query.query_by_user_question(transcribed_text)
+            db_context_text = db_query.format_context_for_llm(db_context)
+            db_query.close()
+            logger.info(f"🔍 Database context retrieved: {db_context.get('query_type', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Database query failed, proceeding without context: {e}")
+            # Continue without database context
+        
+        # Generate response with database context
+        response_text = await llm.generate_response_with_context(
+            transcribed_text, 
+            db_context=db_context_text
+        )
+        
         llm_time = latency_monitor.end_stage(request_id, "llm")
         llm_elapsed = time.time() - llm_start
         

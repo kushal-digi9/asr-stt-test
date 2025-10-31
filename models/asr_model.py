@@ -144,7 +144,7 @@ class ASRModel:
                     return str(transcription).strip()
             
             transcription = await loop.run_in_executor(None, _transcribe)
-            logger.info(f"✅ ASR transcription completed: '{transcription[:100]}{'...' if len(transcription) > 100 else ''}'")
+            logger.info(f"ASR transcription completed: '{transcription[:100]}{'...' if len(transcription) > 100 else ''}'")
             return transcription
             
         except Exception as e:

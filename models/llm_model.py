@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class LLMModel:
     def __init__(self, 
                  ollama_url: str = "http://localhost:11434",
-                 model_name: str = "qwen2.5:0.5b-instruct",
+                 model_name: str = "llama3.2:1b",
                  echo_mode: bool = False,
                  timeout: float = 30.0):
         """
@@ -39,6 +39,77 @@ class LLMModel:
             logger.info("🧠 LLM initialized in echo mode - will return input text")
         else:
             logger.info(f"🧠 LLM initialized with Ollama at {ollama_url}, model: {model_name}")
+
+        async def generate_response_with_context(
+        self, 
+        prompt: str, 
+        db_context: str = "",
+        max_tokens: int = 150
+    ) -> str:
+        """
+        Generate response with database context.
+        
+        Args:
+            prompt: User's question
+            db_context: Formatted database information
+            max_tokens: Maximum tokens to generate
+        """
+        logger.info(f"🧠 Starting LLM generation with database context")
+        
+        if self.echo_mode:
+            return prompt
+        
+        try:
+            # Build enhanced prompt with database context
+            context_section = ""
+            if db_context:
+                context_section = (
+                    f"\n\n=== अस्पताल की जानकारी (Hospital Information) ===\n"
+                    f"{db_context}\n"
+                    f"=== जानकारी समाप्त ===\n\n"
+                )
+            
+            persona_prompt = (
+                "You are a helpful and polite receptionist at a hospital. "
+                "Answer patient queries in Hindi about hospital services, appointments, departments, visiting hours, and general information. "
+                "Always respond in Hindi language only. "
+                "Keep responses brief, clear, and professional. "
+                "Use the hospital information provided below to answer accurately."
+                f"{context_section}"
+                f"रोगी (Patient): {prompt}\n"
+                "रिसेप्शनिस्ट (Receptionist):"
+            )
+            
+            # Rest of the generation logic (same as generate_response)
+            request_data = {
+                "model": self.model_name,
+                "prompt": persona_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "num_predict": max_tokens,
+                    "top_p": 0.9,
+                    "stop": ["\n\n", "User:", "Assistant:"]
+                }
+            }
+            
+            response = await self.client.post(
+                f"{self.ollama_url}/api/generate",
+                json=request_data
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                response_text = result.get("response", "").strip()
+                logger.info(f"✅ LLM generation with context completed")
+                return response_text
+            else:
+                logger.error(f"🧠 Ollama API error: {response.status_code}")
+                return f"[LLM Error] {prompt}"
+                
+        except Exception as e:
+            logger.error(f"🧠 LLM generation with context failed: {e}")
+            return f"[LLM Error] {prompt}"
         
     async def generate_response(self, prompt: str, max_tokens: int = 150) -> str:
         logger.info(f"🧠 Starting LLM generation")

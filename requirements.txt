@@ -27,3 +27,7 @@ langchain==0.1.0
 langchain-community==0.0.10
 ragas==0.1.0
 datasets==2.16.1
+
+# PostgreSQL Dependencies
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23

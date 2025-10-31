@@ -182,7 +182,7 @@ class RAGModel:
                 "metadata": {k: v for k, v in result.payload.items() if k != "text"}
             })
         
-        logger.info(f"✅ Retrieved {len(documents)} documents")
+        logger.info(f"Retrieved {len(documents)} documents")
         return documents
     
     def delete_documents(self, ids: List[str]) -> bool:
@@ -192,10 +192,10 @@ class RAGModel:
                 collection_name=self.collection_name,
                 points_selector=ids
             )
-            logger.info(f"✅ Deleted {len(ids)} documents")
+            logger.info(f"Deleted {len(ids)} documents")
             return True
         except Exception as e:
-            logger.error(f"❌ Failed to delete documents: {e}")
+            logger.error(f"Failed to delete documents: {e}")
             return False
     
     def get_collection_info(self) -> Dict[str, Any]:
@@ -209,5 +209,5 @@ class RAGModel:
                 "status": info.status
             }
         except Exception as e:
-            logger.error(f"❌ Failed to get collection info: {e}")
+            logger.error(f"Failed to get collection info: {e}")
             return {}
