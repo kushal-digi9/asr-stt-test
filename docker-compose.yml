@@ -5,6 +5,15 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:latest
     volumes:
@@ -31,8 +40,10 @@ services:
     depends_on:
       - redis
       - ollama
+      - qdrant
     environment:
       - OLLAMA_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
       - ASR_MOCK_MODE=false
       - TTS_MOCK_MODE=false 
       - LLM_ECHO_MODE=false
@@ -57,8 +68,10 @@ services:
     build: .
     depends_on:
       - redis
+      - qdrant
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
     command: celery -A celery_app.celery_app worker --loglevel=INFO --concurrency=2
     deploy:
       resources:
@@ -71,3 +84,4 @@ services:
 
 volumes:
   ollama_data:
+  qdrant_data:

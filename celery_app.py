@@ -22,4 +22,7 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
+# Auto-discover tasks from both tasks.py and tasks_rag.py
+celery_app.autodiscover_tasks(['tasks', 'tasks_rag'])
+
 
